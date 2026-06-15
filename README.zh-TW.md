@@ -33,7 +33,8 @@
    Amon-Shalem/game-deal-skill-for-hermes
    ```
 3. 勾選「**安裝後啟用**」，按下「**安裝**」
-4. 出現提示時貼上你的 `ITAD_API_KEY`，Hermes 會自動儲存
+4. 第一次使用時，直接告訴 Hermes 你的 API key 並請它儲存：
+   > 「我的 ITAD API key 是 `xxxx`，請幫我儲存。」
 
 ---
 

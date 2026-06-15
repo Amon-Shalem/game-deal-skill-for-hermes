@@ -33,7 +33,8 @@ A [Hermes agent](https://hermes-agent.nousresearch.com) plugin that queries game
    Amon-Shalem/game-deal-skill-for-hermes
    ```
 3. Check **Enable after install** and click **Install**
-4. When prompted, paste your `ITAD_API_KEY` — Hermes saves it automatically
+4. On first use, tell Hermes your API key and ask it to save it:
+   > "My ITAD API key is `xxxx`, please save it."
 
 ---
 
