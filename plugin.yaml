@@ -1,0 +1,3 @@
+name: game-deals
+version: "1.0"
+description: Query Steam game deals via CheapShark API — search by title or browse top discounts
