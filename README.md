@@ -28,8 +28,12 @@ A [Hermes agent](https://hermes-agent.nousresearch.com) plugin that queries game
 ## Installation
 
 1. Open the `/plugins` tab in Hermes
-2. Search for `game-deal-skill-for-hermes` and install it
-3. When prompted, paste your `ITAD_API_KEY` — Hermes saves it automatically
+2. In the **Install from GitHub / Git URL** section, enter:
+   ```
+   Amon-Shalem/game-deal-skill-for-hermes
+   ```
+3. Check **Enable after install** and click **Install**
+4. When prompted, paste your `ITAD_API_KEY` — Hermes saves it automatically
 
 ---
 

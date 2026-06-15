@@ -28,8 +28,12 @@
 ## 安裝
 
 1. 開啟 Hermes 的 `/plugins` 分頁
-2. 搜尋 `game-deal-skill-for-hermes` 並安裝
-3. 出現提示時貼上你的 `ITAD_API_KEY`，Hermes 會自動儲存
+2. 在「**從 GitHub / Git URL 安裝**」欄位輸入：
+   ```
+   Amon-Shalem/game-deal-skill-for-hermes
+   ```
+3. 勾選「**安裝後啟用**」，按下「**安裝**」
+4. 出現提示時貼上你的 `ITAD_API_KEY`，Hermes 會自動儲存
 
 ---
 
