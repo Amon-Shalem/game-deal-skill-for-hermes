@@ -27,21 +27,9 @@
 
 ## 安裝
 
-```bash
-hermes plugins install Amon-Shalem/game-deal-skill-for-hermes --enable
-```
-
-安裝過程中，Hermes 會提示你設定 `ITAD_API_KEY`。將 API key 貼上即可。key 只存在本機環境變數，**不會寫入任何檔案或上傳至任何地方**。
-
-### 手動設定環境變數
-
-```bash
-# Linux / macOS
-export ITAD_API_KEY="your_api_key_here"
-
-# Windows PowerShell
-$env:ITAD_API_KEY = "your_api_key_here"
-```
+1. 開啟 Hermes 的 `/plugins` 分頁
+2. 搜尋 `game-deal-skill-for-hermes` 並安裝
+3. 出現提示時貼上你的 `ITAD_API_KEY`，Hermes 會自動儲存
 
 ---
 

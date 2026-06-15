@@ -27,23 +27,9 @@ A [Hermes agent](https://hermes-agent.nousresearch.com) plugin that queries game
 
 ## Installation
 
-```bash
-hermes plugins install Amon-Shalem/game-deal-skill-for-hermes --enable
-```
-
-During installation, Hermes will prompt you to set `ITAD_API_KEY`. Paste your API key at the prompt — it is stored as a local environment variable and **never written to any file or uploaded anywhere**.
-
-### Manual setup
-
-If you prefer to set the environment variable yourself:
-
-```bash
-# Linux / macOS
-export ITAD_API_KEY="your_api_key_here"
-
-# Windows PowerShell
-$env:ITAD_API_KEY = "your_api_key_here"
-```
+1. Open the `/plugins` tab in Hermes
+2. Search for `game-deal-skill-for-hermes` and install it
+3. When prompted, paste your `ITAD_API_KEY` — Hermes saves it automatically
 
 ---
 
