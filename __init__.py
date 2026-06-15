@@ -1,27 +1,38 @@
 """
-Hermes Plugin：game-deals
+Hermes Plugin：game-deals v2
 
 向 Hermes agent 註冊三個工具：
-  - search_game_deals     — 依遊戲名稱搜尋折扣
-  - get_top_steam_deals   — 取得 Steam 熱門折扣排行
-  - get_deal_link         — 產生折扣購買連結
+  - search_game        — 依名稱搜尋遊戲，取得 ITAD UUID
+  - get_game_prices    — 查特定遊戲在各商店的現況與歷史最低（支援地區貨幣）
+  - get_top_deals      — 瀏覽熱門折扣排行（支援地區貨幣與多種篩選條件）
 
-安裝方式：
-    將此目錄複製到 ~/.hermes/plugins/game-deals/
-    hermes plugins enable game-deals
+安裝：
+    hermes plugins install Amon-Shalem/game-deal-skill-for-hermes --enable
+    # 安裝時會提示設定 ITAD_API_KEY 環境變數
 """
 
 import json
 import logging
 
-from api_client import search_games, get_steam_deals, build_deal_url
-from schemas import (
-    SEARCH_GAME_DEALS_SCHEMA,
-    GET_TOP_STEAM_DEALS_SCHEMA,
-    GET_DEAL_LINK_SCHEMA,
-)
+from api_client import search_games, get_game_overview, get_deals
+from schemas import SEARCH_GAME_SCHEMA, GET_GAME_PRICES_SCHEMA, GET_TOP_DEALS_SCHEMA
 
 logger = logging.getLogger(__name__)
+
+
+def _fmt_price(price: dict | None) -> str | None:
+    """
+    將 ITAD price 物件格式化為易讀字串。
+
+    Args:
+        price: 含 amount 與 currency 欄位的 dict，或 None。
+
+    Returns:
+        格式化字串，例如 "TWD 299.00"，或 None。
+    """
+    if not price:
+        return None
+    return f"{price['currency']} {price['amount']:.2f}"
 
 
 def register(ctx) -> None:
@@ -29,28 +40,28 @@ def register(ctx) -> None:
     Hermes plugin 進入點，由 PluginManager 在載入時呼叫。
 
     Args:
-        ctx: Hermes PluginContext，提供 register_tool / register_hook 等 API。
+        ctx: Hermes PluginContext。
     """
 
-    # ── Tool: search_game_deals ────────────────────────────────────────────
+    # ── Tool: search_game ─────────────────────────────────────────────────
 
-    def handle_search_game_deals(params: dict, **kwargs) -> str:
+    def handle_search_game(params: dict, **kwargs) -> str:
         """
-        依名稱搜尋遊戲並回傳折扣資訊。
+        依名稱搜尋遊戲。
 
         Args:
             params: 含 title（必要）、limit（選用）。
 
         Returns:
-            JSON 字串，含找到的遊戲清單及各遊戲最低售價。
+            JSON 字串，含找到的遊戲清單（id、title、slug）。
         """
         title: str = params["title"]
         limit: int = min(int(params.get("limit", 5)), 10)
 
         try:
-            games = search_games(title, limit=limit)
+            games = search_games(title, results=limit)
         except Exception as exc:
-            logger.error("search_game_deals 呼叫 CheapShark API 失敗：%s", exc)
+            logger.error("search_game 失敗：%s", exc)
             return json.dumps({"error": str(exc)})
 
         if not games:
@@ -60,116 +71,147 @@ def register(ctx) -> None:
                 "message": f"找不到名稱含有 '{title}' 的遊戲。",
             })
 
-        results = []
-        for game in games:
-            steam_app_id = game.get("steamAppID")
-            results.append({
-                "name": game.get("external"),
-                "cheapest_price_usd": game.get("cheapest"),
-                "deal_id": game.get("cheapestDealID"),
-                "steam_url": (
-                    f"https://store.steampowered.com/app/{steam_app_id}"
-                    if steam_app_id
-                    else None
-                ),
-            })
-
+        results = [
+            {"id": g["id"], "title": g["title"], "slug": g["slug"]}
+            for g in games
+        ]
         return json.dumps({"found": len(results), "games": results}, ensure_ascii=False)
 
     ctx.register_tool(
-        name="search_game_deals",
+        name="search_game",
         toolset="game_deals",
-        schema=SEARCH_GAME_DEALS_SCHEMA,
-        handler=handle_search_game_deals,
-        description="依遊戲名稱搜尋 Steam 折扣資訊",
+        schema=SEARCH_GAME_SCHEMA,
+        handler=handle_search_game,
+        description="依遊戲名稱搜尋，取得 ITAD UUID（查詢價格前的必要步驟）",
     )
 
-    # ── Tool: get_top_steam_deals ──────────────────────────────────────────
+    # ── Tool: get_game_prices ─────────────────────────────────────────────
 
-    def handle_get_top_steam_deals(params: dict, **kwargs) -> str:
+    def handle_get_game_prices(params: dict, **kwargs) -> str:
         """
-        取得 Steam 熱門折扣排行，支援多種篩選條件。
+        查詢特定遊戲在各商店的目前售價與歷史最低。
 
         Args:
-            params: 含 count、sort_by、min_discount_percent、max_price_usd、min_steam_rating（均選用）。
+            params: 含 game_id（必要）、country（選用，預設 US）。
+
+        Returns:
+            JSON 字串，含目前最優惠與歷史最低的完整資訊。
+        """
+        game_id: str = params["game_id"]
+        country: str = params.get("country", "US").upper()
+
+        try:
+            overview = get_game_overview([game_id], country=country)
+        except Exception as exc:
+            logger.error("get_game_prices 失敗：%s", exc)
+            return json.dumps({"error": str(exc)})
+
+        prices = overview.get("prices", [])
+        if not prices:
+            return json.dumps({"found": False, "message": "查無此遊戲的價格資料。"})
+
+        record = prices[0]
+        current = record.get("current")
+        lowest = record.get("lowest")
+
+        result = {
+            "game_id": game_id,
+            "country": country,
+            "current_best": None,
+            "history_low": None,
+            "store_url": record.get("urls", {}).get("game"),
+        }
+
+        if current:
+            result["current_best"] = {
+                "shop": current["shop"]["title"],
+                "price": _fmt_price(current.get("price")),
+                "regular_price": _fmt_price(current.get("regular")),
+                "discount_percent": current.get("cut"),
+                "deal_url": current.get("url"),
+                "expires": current.get("expiry"),
+            }
+
+        if lowest:
+            result["history_low"] = {
+                "shop": lowest["shop"]["title"],
+                "price": _fmt_price(lowest.get("price")),
+                "discount_percent": lowest.get("cut"),
+                "date": lowest.get("timestamp"),
+            }
+
+        return json.dumps(result, ensure_ascii=False)
+
+    ctx.register_tool(
+        name="get_game_prices",
+        toolset="game_deals",
+        schema=GET_GAME_PRICES_SCHEMA,
+        handler=handle_get_game_prices,
+        description="查詢特定遊戲在各商店的現況與歷史最低（支援地區貨幣）",
+    )
+
+    # ── Tool: get_top_deals ───────────────────────────────────────────────
+
+    def handle_get_top_deals(params: dict, **kwargs) -> str:
+        """
+        取得熱門折扣排行，支援國家、折扣幅度、Steam 評分篩選。
+
+        Args:
+            params: 含 country、limit、min_discount_percent、min_steam_score、sort（均選用）。
 
         Returns:
             JSON 字串，含折扣清單。
         """
-        count: int = min(int(params.get("count", 10)), 30)
-        sort_by: str = params.get("sort_by", "DealRating")
-        min_discount: int = int(params.get("min_discount_percent", 0))
-        max_price: float = float(params.get("max_price_usd", 50))
-        min_rating: int = int(params.get("min_steam_rating", 0))
+        country: str = params.get("country", "US").upper()
+        limit: int = min(int(params.get("limit", 10)), 30)
+        min_cut: int = int(params.get("min_discount_percent", 0))
+        min_score: int = int(params.get("min_steam_score", 0))
+        sort: str = params.get("sort", "trending")
 
         try:
-            raw_deals = get_steam_deals(
-                page_size=count,
-                sort_by=sort_by,
-                min_discount=min_discount,
-                max_price=max_price,
-                min_steam_rating=min_rating,
+            data = get_deals(
+                country=country,
+                limit=limit,
+                min_cut=min_cut,
+                min_steam_score=min_score,
+                sort=sort,
             )
         except Exception as exc:
-            logger.error("get_top_steam_deals 呼叫 CheapShark API 失敗：%s", exc)
+            logger.error("get_top_deals 失敗：%s", exc)
             return json.dumps({"error": str(exc)})
 
-        deals = [
-            {
-                "title": d.get("title"),
-                "sale_price_usd": d.get("salePrice"),
-                "original_price_usd": d.get("normalPrice"),
-                "discount_percent": round(float(d.get("savings", 0)), 1),
-                "steam_rating": d.get("steamRatingText"),
-                "steam_rating_percent": d.get("steamRatingPercent"),
-                "deal_id": d.get("dealID"),
-                "metacritic_score": d.get("metacriticScore") or None,
-            }
-            for d in raw_deals
-        ]
+        deals = []
+        for item in data.get("list", []):
+            deal = item.get("deal", {})
+            deals.append({
+                "title": item.get("title"),
+                "shop": deal.get("shop", {}).get("title"),
+                "price": _fmt_price(deal.get("price")),
+                "regular_price": _fmt_price(deal.get("regular")),
+                "discount_percent": deal.get("cut"),
+                "is_history_low": deal.get("flag") in ("N", "H"),
+                "deal_url": deal.get("url"),
+                "expires": deal.get("expiry"),
+            })
 
         return json.dumps(
-            {"count": len(deals), "sorted_by": sort_by, "deals": deals},
+            {"country": country, "count": len(deals), "deals": deals},
             ensure_ascii=False,
         )
 
     ctx.register_tool(
-        name="get_top_steam_deals",
+        name="get_top_deals",
         toolset="game_deals",
-        schema=GET_TOP_STEAM_DEALS_SCHEMA,
-        handler=handle_get_top_steam_deals,
-        description="取得 Steam 目前熱門折扣排行，支援依折扣幅度、售價、評分篩選",
+        schema=GET_TOP_DEALS_SCHEMA,
+        handler=handle_get_top_deals,
+        description="瀏覽熱門折扣排行（支援地區貨幣與折扣幅度、評分篩選）",
     )
 
-    # ── Tool: get_deal_link ────────────────────────────────────────────────
-
-    def handle_get_deal_link(params: dict, **kwargs) -> str:
-        """
-        根據 dealID 產生購買連結。
-
-        Args:
-            params: 含 deal_id（必要）。
-
-        Returns:
-            JSON 字串，含購買連結 URL。
-        """
-        deal_id: str = params["deal_id"]
-        url = build_deal_url(deal_id)
-        return json.dumps({"purchase_url": url}, ensure_ascii=False)
-
-    ctx.register_tool(
-        name="get_deal_link",
-        toolset="game_deals",
-        schema=GET_DEAL_LINK_SCHEMA,
-        handler=handle_get_deal_link,
-        description="根據 dealID 產生 CheapShark 購買導向連結",
-    )
-
-    # ── Hook: log every tool call in this toolset ──────────────────────────
+    # ── Hook: debug logging ───────────────────────────────────────────────
 
     def _on_tool_call(tool_name: str, params: dict, result: str) -> None:
         """post_tool_call hook，記錄 game_deals toolset 的每次呼叫。"""
-        if tool_name in {"search_game_deals", "get_top_steam_deals", "get_deal_link"}:
+        if tool_name in {"search_game", "get_game_prices", "get_top_deals"}:
             logger.debug("[game-deals] tool=%s params=%s", tool_name, params)
 
     ctx.register_hook("post_tool_call", _on_tool_call)
